@@ -1,6 +1,27 @@
 import { z } from "zod";
 import { readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, extname } from "node:path";
+// Map common file extensions to MIME types so uploads carry a correct Content-Type
+// (Taiga uses it for image detection / inline preview; falls back for unknown types).
+const MIME_BY_EXT = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+    ".pdf": "application/pdf",
+    ".zip": "application/zip",
+    ".json": "application/json",
+    ".csv": "text/csv",
+    ".html": "text/html",
+    ".log": "text/plain",
+    ".txt": "text/plain",
+};
+function mimeTypeFor(filePath) {
+    return MIME_BY_EXT[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
 export function registerIssueTools(server, client) {
     server.tool("taiga_issues_list", "List issues with optional filters.", {
         project: z.number().optional().describe("Project ID"),
@@ -199,7 +220,7 @@ export function registerIssueTools(server, client) {
         form.append("object_id", String(object_id));
         if (description)
             form.append("description", description);
-        form.append("attached_file", new Blob([buffer]), basename(file_path));
+        form.append("attached_file", new Blob([buffer], { type: mimeTypeFor(file_path) }), basename(file_path));
         const data = await client.postMultipart("/issues/attachments", form);
         return {
             content: [
