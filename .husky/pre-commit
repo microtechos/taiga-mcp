@@ -1,0 +1,31 @@
+# Keep the committed dist/ a faithful build of the COMMITTED src/.
+# This package runs from its committed build via `npx github:microtechos/taiga-mcp`
+# (no build at fetch time), so dist/ must match exactly the source that ships.
+# Build from the STAGED snapshot (not the working tree) so stray unstaged edits
+# can never leak into the committed dist/. Only act when a build input is staged.
+git diff --cached --name-only | grep -qE '^(src/|tsconfig\.json$|package\.json$)' || exit 0
+
+echo "husky: build input staged -> building dist/ from the staged snapshot..."
+
+# Set aside everything NOT staged (unstaged tracked edits + untracked files); --keep-index
+# leaves the working tree equal to the staged snapshot. node_modules etc. stay (gitignored).
+STASH_MSG="husky-precommit-$(date +%s)-$$"
+git stash push --keep-index --include-untracked --quiet --message "$STASH_MSG" || true
+
+unstash() {
+  if git stash list | grep -q "$STASH_MSG"; then
+    if ! git stash pop --quiet; then
+      echo "husky: WARNING - could not auto-restore your unstaged changes (likely a conflict on generated files)."
+      echo "husky: your work is safe in the stash -> run:  git checkout -- dist && git stash pop"
+    fi
+  fi
+}
+trap unstash EXIT
+
+if ! npm run build; then
+  echo "husky: tsc build FAILED -- commit aborted. Fix the build, then re-commit."
+  exit 1
+fi
+
+git add dist
+echo "husky: dist/ built from staged src and staged in sync."

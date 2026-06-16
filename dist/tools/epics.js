@@ -99,7 +99,7 @@ export function registerEpicTools(server, client) {
         epic_id: z.number().describe("Epic ID"),
         user_story: z.number().describe("User Story ID"),
     }, async ({ epic_id, ...body }) => {
-        const data = await client.post(`/epics/${epic_id}/related_userstories`, body);
+        const data = await client.post(`/epics/${epic_id}/related_userstories`, { epic: epic_id, ...body });
         return {
             content: [
                 { type: "text", text: JSON.stringify(data, null, 2) },
