@@ -171,7 +171,7 @@ export function registerEpicTools(server: McpServer, client: TaigaClient) {
     async ({ epic_id, ...body }) => {
       const data = await client.post(
         `/epics/${epic_id}/related_userstories`,
-        body,
+        { epic: epic_id, ...body },
       );
       return {
         content: [
