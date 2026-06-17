@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { registerEntityAttachmentWriteTools } from "./attachments.js";
 export function registerEpicTools(server, client) {
     server.tool("taiga_epics_list", "List epics. Filter by project.", {
         project: z.number().optional().describe("Project ID"),
@@ -191,5 +192,6 @@ export function registerEpicTools(server, client) {
             ],
         };
     });
+    registerEntityAttachmentWriteTools(server, client, "epics", "epic");
 }
 //# sourceMappingURL=epics.js.map

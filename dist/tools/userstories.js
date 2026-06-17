@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { registerEntityAttachmentWriteTools } from "./attachments.js";
 export function registerUserStoryTools(server, client) {
     server.tool("taiga_userstories_list", "List user stories with optional filters.", {
         project: z.number().optional().describe("Project ID"),
@@ -228,5 +229,6 @@ export function registerUserStoryTools(server, client) {
             ],
         };
     });
+    registerEntityAttachmentWriteTools(server, client, "userstories", "user story");
 }
 //# sourceMappingURL=userstories.js.map

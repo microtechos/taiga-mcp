@@ -1,27 +1,5 @@
 import { z } from "zod";
-import { readFileSync } from "node:fs";
-import { basename, extname } from "node:path";
-// Map common file extensions to MIME types so uploads carry a correct Content-Type
-// (Taiga uses it for image detection / inline preview; falls back for unknown types).
-const MIME_BY_EXT = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".bmp": "image/bmp",
-    ".svg": "image/svg+xml",
-    ".pdf": "application/pdf",
-    ".zip": "application/zip",
-    ".json": "application/json",
-    ".csv": "text/csv",
-    ".html": "text/html",
-    ".log": "text/plain",
-    ".txt": "text/plain",
-};
-function mimeTypeFor(filePath) {
-    return MIME_BY_EXT[extname(filePath).toLowerCase()] ?? "application/octet-stream";
-}
+import { registerEntityAttachmentWriteTools } from "./attachments.js";
 export function registerIssueTools(server, client) {
     server.tool("taiga_issues_list", "List issues with optional filters.", {
         project: z.number().optional().describe("Project ID"),
@@ -201,32 +179,7 @@ export function registerIssueTools(server, client) {
             ],
         };
     });
-    server.tool("taiga_issues_attachment_create", "Upload a local file as an attachment to an issue (e.g. logs, screenshots).", {
-        project: z.number().describe("Project ID"),
-        object_id: z
-            .number()
-            .describe("Issue internal ID (the 'id' field, not the #ref number)"),
-        file_path: z
-            .string()
-            .describe("Absolute path to the local file to upload"),
-        description: z
-            .string()
-            .optional()
-            .describe("Optional description for the attachment"),
-    }, async ({ project, object_id, file_path, description }) => {
-        const buffer = readFileSync(file_path);
-        const form = new FormData();
-        form.append("project", String(project));
-        form.append("object_id", String(object_id));
-        if (description)
-            form.append("description", description);
-        form.append("attached_file", new Blob([buffer], { type: mimeTypeFor(file_path) }), basename(file_path));
-        const data = await client.postMultipart("/issues/attachments", form);
-        return {
-            content: [
-                { type: "text", text: JSON.stringify(data, null, 2) },
-            ],
-        };
-    });
+    // Upload (create) + download tools, shared with tasks/userstories/epics.
+    registerEntityAttachmentWriteTools(server, client, "issues", "issue");
 }
 //# sourceMappingURL=issues.js.map

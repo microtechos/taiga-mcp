@@ -17,5 +17,6 @@ export declare class TaigaClient {
     patch(path: string, body?: unknown): Promise<unknown>;
     delete(path: string): Promise<unknown>;
     postMultipart(path: string, formData: FormData): Promise<unknown>;
+    getBinary(urlOrPath: string): Promise<ArrayBuffer>;
 }
 //# sourceMappingURL=client.d.ts.map

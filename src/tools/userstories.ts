@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TaigaClient } from "../client.js";
+import { registerEntityAttachmentWriteTools } from "./attachments.js";
 
 export function registerUserStoryTools(server: McpServer, client: TaigaClient) {
   server.tool(
@@ -365,4 +366,6 @@ export function registerUserStoryTools(server: McpServer, client: TaigaClient) {
       };
     },
   );
+
+  registerEntityAttachmentWriteTools(server, client, "userstories", "user story");
 }

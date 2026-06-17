@@ -15,9 +15,14 @@ export function registerHistoryTools(server, client) {
         server.tool(`taiga_${entityType}_comment_create`, `Add a comment to a ${entityType}. Comment is posted via the history endpoint.`, {
             id: z.number().describe(`${entityType} ID`),
             comment: z.string().describe("Comment text"),
-        }, async ({ id, comment }) => {
-            // In Taiga, comments are added by posting a comment field in a PATCH to the entity
-            // The proper way is to PATCH the entity with a "comment" field
+            version: z
+                .number()
+                .optional()
+                .describe("Entity version for optimistic-concurrency. Defaults to the entity's current version (fetched automatically). Never hardcode it."),
+        }, async ({ id, comment, version }) => {
+            // Comments are added by PATCHing the entity with a "comment" field. Taiga's optimistic
+            // concurrency expects the entity's CURRENT version — hardcoding it can be rejected (412)
+            // on any already-edited entity. Fetch the current version unless the caller supplied one.
             const entityEndpoints = {
                 userstory: "userstories",
                 task: "tasks",
@@ -25,9 +30,14 @@ export function registerHistoryTools(server, client) {
                 wiki: "wiki",
             };
             const endpoint = entityEndpoints[entityType];
+            let resolvedVersion = version;
+            if (resolvedVersion === undefined) {
+                const current = (await client.get(`/${endpoint}/${id}`));
+                resolvedVersion = current.version ?? 1;
+            }
             const data = await client.patch(`/${endpoint}/${id}`, {
                 comment,
-                version: 1,
+                version: resolvedVersion,
             });
             return {
                 content: [

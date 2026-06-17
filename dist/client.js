@@ -135,5 +135,38 @@ export class TaigaClient {
     async postMultipart(path, formData) {
         return this.request("POST", path, { body: formData, isMultipart: true });
     }
+    // Fetch raw bytes (e.g. an attachment file) authenticated with the in-memory bearer token.
+    // Accepts an absolute URL, an /api-relative path, or a bare media-relative path. The token
+    // never leaves this process. Follows redirects and retries once after a 401 refresh.
+    async getBinary(urlOrPath) {
+        await this.ensureAuth();
+        const origin = new URL(this.baseUrl).origin;
+        let target;
+        if (/^https?:\/\//i.test(urlOrPath)) {
+            target = urlOrPath;
+        }
+        else if (urlOrPath.startsWith("/")) {
+            target = origin + urlOrPath;
+        }
+        else {
+            target = `${origin}/media/${urlOrPath}`;
+        }
+        const fetchOnce = () => fetch(target, {
+            headers: { Authorization: `Bearer ${this.authToken}` },
+            redirect: "follow",
+        });
+        let res = await fetchOnce();
+        if (res.status === 401) {
+            const refreshed = await this.refreshAuth();
+            if (!refreshed)
+                await this.login();
+            res = await fetchOnce();
+        }
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`Taiga binary fetch failed ${res.status} GET ${target}: ${text}`);
+        }
+        return res.arrayBuffer();
+    }
 }
 //# sourceMappingURL=client.js.map

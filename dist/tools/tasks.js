@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { registerEntityAttachmentWriteTools } from "./attachments.js";
 export function registerTaskTools(server, client) {
     server.tool("taiga_tasks_list", "List tasks with optional filters.", {
         project: z.number().optional().describe("Project ID"),
@@ -172,5 +173,6 @@ export function registerTaskTools(server, client) {
             ],
         };
     });
+    registerEntityAttachmentWriteTools(server, client, "tasks", "task");
 }
 //# sourceMappingURL=tasks.js.map
