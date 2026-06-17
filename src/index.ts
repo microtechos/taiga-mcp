@@ -25,7 +25,7 @@ import { registerExportImportTools } from "./tools/export-import.js";
 async function main() {
   const server = new McpServer({
     name: "taiga-mcp",
-    version: "1.0.0",
+    version: "1.3.0",
   });
 
   const client = new TaigaClient();
