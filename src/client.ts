@@ -172,38 +172,69 @@ export class TaigaClient {
   }
 
   // Fetch raw bytes (e.g. an attachment file) authenticated with the in-memory bearer token.
-  // Accepts an absolute URL, an /api-relative path, or a bare media-relative path. The token
-  // never leaves this process. Follows redirects and retries once after a 401 refresh.
+  // Accepts an absolute URL, an /api-relative path, or a bare media-relative path.
+  //
+  // Security: the bearer token is ONLY ever sent to the configured Taiga origin. A target
+  // resolving to any other origin is refused (prevents SSRF / token exfiltration if a caller —
+  // e.g. via prompt injection — supplies a hostile `url`). Redirects are followed manually so a
+  // cross-origin hop (e.g. to an object store) is fetched WITHOUT the Authorization header.
   async getBinary(urlOrPath: string): Promise<ArrayBuffer> {
     await this.ensureAuth();
-    const origin = new URL(this.baseUrl).origin;
-    let target: string;
+    const apiOrigin = new URL(this.baseUrl).origin;
+
+    let target: URL;
     if (/^https?:\/\//i.test(urlOrPath)) {
-      target = urlOrPath;
+      target = new URL(urlOrPath);
     } else if (urlOrPath.startsWith("/")) {
-      target = origin + urlOrPath;
+      target = new URL(urlOrPath, apiOrigin);
     } else {
-      target = `${origin}/media/${urlOrPath}`;
+      if (!/^[A-Za-z0-9_./-]+$/.test(urlOrPath) || urlOrPath.includes("..")) {
+        throw new Error(`Invalid attachment path: ${urlOrPath}`);
+      }
+      target = new URL(`/media/${urlOrPath}`, apiOrigin);
     }
 
-    const fetchOnce = () =>
-      fetch(target, {
-        headers: { Authorization: `Bearer ${this.authToken}` },
-        redirect: "follow",
-      });
-
-    let res = await fetchOnce();
-    if (res.status === 401) {
-      const refreshed = await this.refreshAuth();
-      if (!refreshed) await this.login();
-      res = await fetchOnce();
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
+    if (target.origin !== apiOrigin) {
       throw new Error(
-        `Taiga binary fetch failed ${res.status} GET ${target}: ${text}`,
+        `Refusing to fetch an attachment from a non-Taiga origin (${target.origin}); only ${apiOrigin} is allowed.`,
       );
     }
-    return res.arrayBuffer();
+
+    let current = target;
+    let triedRefresh = false;
+    for (let hop = 0; hop < 6; hop++) {
+      const sameOrigin = current.origin === apiOrigin;
+      const res = await fetch(current.toString(), {
+        // Only ever attach the bearer to the Taiga origin — never on a cross-origin redirect hop.
+        headers: sameOrigin ? { Authorization: `Bearer ${this.authToken}` } : {},
+        redirect: "manual",
+      });
+
+      if (res.status === 401 && sameOrigin && !triedRefresh) {
+        triedRefresh = true;
+        const refreshed = await this.refreshAuth();
+        if (!refreshed) await this.login();
+        hop--; // retry this hop with the refreshed token
+        continue;
+      }
+
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get("location");
+        if (!loc) {
+          throw new Error(`Taiga binary fetch: redirect ${res.status} without Location.`);
+        }
+        current = new URL(loc, current);
+        continue;
+      }
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(
+          `Taiga binary fetch failed ${res.status} GET ${current.origin}${current.pathname}: ${text}`,
+        );
+      }
+      return res.arrayBuffer();
+    }
+    throw new Error("Taiga binary fetch: too many redirects.");
   }
 }

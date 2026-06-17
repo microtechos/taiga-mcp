@@ -58,6 +58,15 @@ The shared upload/download logic lives in `src/tools/attachments.ts`
 (`registerEntityAttachmentWriteTools`); the read tools (`*_attachments_list`,
 `*_attachment_get`) stay in each entity's tool file.
 
+## Security notes
+
+- **Attachment downloads** only ever fetch from the configured Taiga host, and the bearer
+  token is only sent to that origin (never forwarded across a redirect to another host) — a
+  hostile `url` argument cannot be used to exfiltrate the token.
+- **Downloads never overwrite** an existing file. Set `TAIGA_DOWNLOAD_DIR` to confine all
+  download writes to one directory, and `TAIGA_UPLOAD_DIR` to confine which local files may be
+  uploaded. Unset, the tools use the absolute path given (their documented contract).
+
 ## License
 
 MIT, inherited from illodev/taiga-mcp. Original copyright retained.

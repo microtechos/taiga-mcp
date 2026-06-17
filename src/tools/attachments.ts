@@ -1,8 +1,23 @@
 import { z } from "zod";
 import { readFileSync, writeFileSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename, extname, resolve, sep } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TaigaClient } from "../client.js";
+
+// Optional filesystem confinement. If the env var is set, the resolved path must stay inside
+// that directory; otherwise the absolute path is used as-is (the tool's documented contract).
+// Lets a locked-down deployment sandbox local reads/writes without changing default behavior.
+function confinePath(absPath: string, envVar: string): string {
+  const resolved = resolve(absPath);
+  const root = process.env[envVar];
+  if (root) {
+    const rootResolved = resolve(root);
+    if (resolved !== rootResolved && !resolved.startsWith(rootResolved + sep)) {
+      throw new Error(`Path must be inside ${envVar} (${rootResolved}): ${resolved}`);
+    }
+  }
+  return resolved;
+}
 
 // Map common file extensions to MIME types so uploads carry a correct Content-Type
 // (Taiga uses it for image detection / inline preview; falls back for unknown types).
@@ -52,7 +67,7 @@ export function registerEntityAttachmentWriteTools(
         .describe("Optional description for the attachment"),
     },
     async ({ project, object_id, file_path, description }) => {
-      const buffer = readFileSync(file_path);
+      const buffer = readFileSync(confinePath(file_path, "TAIGA_UPLOAD_DIR"));
       const form = new FormData();
       form.append("project", String(project));
       form.append("object_id", String(object_id));
@@ -72,8 +87,8 @@ export function registerEntityAttachmentWriteTools(
   server.tool(
     `taiga_${plural}_attachment_download`,
     `Download a ${label} attachment's bytes to a local file. Authenticated via the MCP's own ` +
-      `Taiga session (credentials never leave this process). Provide either the attachment ` +
-      `\`id\` or a direct \`url\`.`,
+      `Taiga session (credentials never leave this process, and are only ever sent to the ` +
+      `configured Taiga host). Provide either the attachment \`id\` or a direct \`url\`.`,
     {
       id: z
         .number()
@@ -82,10 +97,14 @@ export function registerEntityAttachmentWriteTools(
       url: z
         .string()
         .optional()
-        .describe("Direct attachment URL (absolute, signed); alternative to id"),
+        .describe(
+          "Direct attachment URL (absolute, signed) on the configured Taiga host; alternative to id. URLs on other hosts are refused.",
+        ),
       dest_path: z
         .string()
-        .describe("Absolute local path to write the downloaded file to"),
+        .describe(
+          "Absolute local path to write to. Must not already exist (no overwrite); confined to TAIGA_DOWNLOAD_DIR if that env var is set.",
+        ),
     },
     async ({ id, url, dest_path }) => {
       if (id === undefined && !url) {
@@ -108,7 +127,10 @@ export function registerEntityAttachmentWriteTools(
         throw new Error("Could not resolve the attachment's file URL.");
       }
       const bytes = Buffer.from(await client.getBinary(fileUrl));
-      writeFileSync(dest_path, bytes);
+      // Confine to TAIGA_DOWNLOAD_DIR if set; never overwrite an existing file ("wx").
+      writeFileSync(confinePath(dest_path, "TAIGA_DOWNLOAD_DIR"), bytes, {
+        flag: "wx",
+      });
       if (!name) name = basename(fileUrl.split("?")[0]);
       return {
         content: [
